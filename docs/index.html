@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fuel Cell Analysis Software — BS Engineering</title>
+<style>
+  :root{
+    --bg:#f7f6f3; --surface:#ffffff; --surface2:#f1efe8;
+    --text:#1f1f1d; --muted:#5f5e5a; --border:rgba(0,0,0,0.12);
+    --blue:#185FA5; --teal:#0F6E56; --coral:#993C1D; --accent:#534AB7;
+    --radius:12px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#1d1c1a; --surface:#262522; --surface2:#2f2e2b;
+      --text:#f1efe8; --muted:#b4b2a9; --border:rgba(255,255,255,0.14);
+      --blue:#85B7EB; --teal:#5DCAA5; --coral:#F0997B; --accent:#AFA9EC; }
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6; }
+  .wrap{ max-width:860px; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  header h1{ font-size:24px; font-weight:600; margin:0 0 4px; }
+  header p{ color:var(--muted); margin:0 0 1.5rem; font-size:14px; }
+  .card{ background:var(--surface); border:0.5px solid var(--border);
+    border-radius:var(--radius); padding:1.25rem 1.5rem; margin-bottom:1.5rem; }
+  label{ font-size:13px; color:var(--muted); }
+  select{ width:100%; padding:8px 10px; border-radius:8px; border:0.5px solid var(--border);
+    background:var(--surface); color:var(--text); font-size:14px; }
+  input[type=range]{ width:100%; accent-color:var(--accent); }
+  .row{ display:flex; align-items:center; gap:12px; margin:0 0 12px; }
+  .row label{ min-width:120px; }
+  .row .out{ font-size:14px; font-weight:500; min-width:70px; text-align:right; }
+  #phase-note{ font-size:12px; color:var(--muted); margin:0.25rem 0 0; }
+  .metrics{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .metric{ background:var(--surface2); border-radius:8px; padding:1rem; }
+  .metric .k{ font-size:13px; color:var(--muted); }
+  .metric .v{ font-size:24px; font-weight:600; margin-top:2px; }
+  .btns{ display:flex; gap:8px; margin:0 0 12px; flex-wrap:wrap; }
+  .metric-btn{ padding:7px 14px; border-radius:8px; border:0.5px solid var(--border);
+    background:transparent; color:var(--text); font-size:13px; cursor:pointer; }
+  .metric-btn.active{ background:var(--surface2); }
+  .chartbox{ position:relative; width:100%; height:320px; }
+  footer{ color:var(--muted); font-size:12px; margin-top:1.5rem; }
+  code{ background:var(--surface2); padding:1px 5px; border-radius:4px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Fuel Cell Analysis Software</h1>
+    <p>BS Engineering — Project 2 · interactive performance calculator (hydrogen, methanol, ethanol, natural gas)</p>
+  </header>
+
+  <div class="card">
+    <div class="row">
+      <label for="fuel">Fuel</label>
+      <select id="fuel" style="flex:1;">
+        <option value="H2">Hydrogen (H2)</option>
+        <option value="CH3OH">Methanol (CH3OH)</option>
+        <option value="C2H5OH">Ethanol (C2H5OH)</option>
+        <option value="CH4">Natural gas (CH4)</option>
+      </select>
+    </div>
+    <div class="row">
+      <label for="temp">Temperature</label>
+      <input type="range" id="temp" min="10" max="250" value="80" step="1" />
+      <span class="out" id="temp-out">80 °C</span>
+    </div>
+    <div class="row">
+      <label for="power">Required power</label>
+      <input type="range" id="power" min="1" max="100" value="50" step="1" />
+      <span class="out" id="power-out">50 kW</span>
+    </div>
+    <div class="row">
+      <label for="volt">Required voltage</label>
+      <input type="range" id="volt" min="5" max="60" value="12" step="1" />
+      <span class="out" id="volt-out">12 V</span>
+    </div>
+    <div id="phase-note"></div>
+  </div>
+
+  <div class="card">
+    <div class="metrics">
+      <div class="metric"><div class="k">Efficiency</div><div class="v" id="m-eff">–</div></div>
+      <div class="metric"><div class="k">Reversible voltage</div><div class="v" id="m-erev">–</div></div>
+      <div class="metric"><div class="k">Stack voltage</div><div class="v" id="m-vstack">–</div></div>
+      <div class="metric"><div class="k">Load current</div><div class="v" id="m-iload">–</div></div>
+      <div class="metric"><div class="k">Stacks required</div><div class="v" id="m-stacks">–</div></div>
+      <div class="metric"><div class="k">Fuel consumption</div><div class="v" id="m-fuel">–</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="btns">
+      <button class="metric-btn active" data-metric="eff">Efficiency</button>
+      <button class="metric-btn" data-metric="volt">Cell voltage</button>
+      <button class="metric-btn" data-metric="fuel">Fuel rate</button>
+    </div>
+    <div class="chartbox">
+      <canvas id="chart" role="img" aria-label="Performance metric versus fuel cell temperature from 10 to 250 degrees Celsius.">Performance metric versus temperature.</canvas>
+    </div>
+  </div>
+
+  <footer>
+    Model: E<sub>rev</sub> = −ΔG/(nF), ΔG = ΔH − TΔS, with liquid/gas phase switching at each boiling point.
+    η = η<sub>thermo</sub>·η<sub>voltage</sub>·η<sub>util</sub>. Fuel rate from energy balance ṅ = P/(η·|ΔH|).
+    Same model as the Python source (<code>fuel_cell.py</code>).
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const F = 96485, T0 = 273.15;
+const SP = {
+  H2_g:[0,130.68], O2_g:[0,205.14], H2O_l:[-285830,69.95], H2O_g:[-241820,188.84],
+  CO2_g:[-393520,213.79], CH3OH_l:[-238400,126.80], CH3OH_g:[-201000,239.90],
+  C2H5OH_l:[-277690,160.70], C2H5OH_g:[-234950,281.60], CH4_g:[-74870,186.25]
+};
+const FUELS = {
+  H2:    {name:"Hydrogen",    M:2.016, n:2,  bp:-252.9, o2:0.5, co2:0, h2o:1, liq:null,       gas:"H2_g"},
+  CH3OH: {name:"Methanol",    M:32.04, n:6,  bp:64.7,   o2:1.5, co2:1, h2o:2, liq:"CH3OH_l",  gas:"CH3OH_g"},
+  C2H5OH:{name:"Ethanol",     M:46.07, n:12, bp:78.4,   o2:3,   co2:2, h2o:3, liq:"C2H5OH_l", gas:"C2H5OH_g"},
+  CH4:   {name:"Natural gas", M:16.04, n:8,  bp:-161.5, o2:2,   co2:1, h2o:2, liq:null,       gas:"CH4_g"}
+};
+const VOLT_EFF = 0.70, UTIL = 0.95, JDENS = 0.6, AREA = 250;
+
+function dHS(f, T){
+  const fk = (f.liq && T < f.bp) ? f.liq : f.gas;
+  const wk = T < 100 ? "H2O_l" : "H2O_g";
+  const [Hf_f,S_f]=SP[fk], [Hf_w,S_w]=SP[wk], [Hf_o,S_o]=SP.O2_g, [Hf_c,S_c]=SP.CO2_g;
+  return [(f.co2*Hf_c + f.h2o*Hf_w) - (Hf_f + f.o2*Hf_o),
+          (f.co2*S_c  + f.h2o*S_w ) - (S_f  + f.o2*S_o )];
+}
+function analyze(f, T, powerW, voltV){
+  const [dH,dS] = dHS(f,T);
+  const dG = dH - (T+T0)*dS;
+  const Erev = -dG/(f.n*F);
+  const eta = (dG/dH)*VOLT_EFF*UTIL;
+  const Vcell = Erev*VOLT_EFF;
+  const nSeries = Vcell>0 ? Math.max(1, Math.round(voltV/Vcell)) : Infinity;
+  const Icell = JDENS*AREA;
+  const Pstack = nSeries*Vcell*Icell;
+  return {
+    Erev, Vcell, Vstack:nSeries*Vcell, eta,
+    Iload:powerW/voltV,
+    nStacks: Pstack>0 ? Math.ceil(powerW/Pstack) : Infinity,
+    gps: eta>0 ? (powerW/(eta*Math.abs(dH)))*f.M : NaN,
+    phase: (f.liq && T<f.bp) ? "liquid" : "gas"
+  };
+}
+
+const $ = id => document.getElementById(id);
+let chart, metric = "eff";
+const COLORS = {eff:"#185FA5", volt:"#0F6E56", fuel:"#993C1D"};
+const LABELS = {eff:"Efficiency [%]", volt:"Operating cell voltage [V]", fuel:"Fuel consumption [g/s]"};
+
+const cur = () => ({ f:FUELS[$("fuel").value], T:+$("temp").value, P:+$("power").value*1000, V:+$("volt").value });
+
+function sweep(f, key){
+  const xs=[], ys=[], edges=[f.bp,100];
+  for(let T=10; T<=250; T++){
+    const r = analyze(f,T,50000,12);
+    let y = key==="eff" ? r.eta*100 : key==="volt" ? r.Vcell : r.gps;
+    if(!(y>0)) y = null;
+    if(edges.some(b => Math.floor(b)===T)) y = null;
+    xs.push(T); ys.push(y);
+  }
+  return {xs,ys};
+}
+
+function redraw(){
+  const {f} = cur(); const {xs,ys} = sweep(f,metric); const col = COLORS[metric];
+  if(chart) chart.destroy();
+  chart = new Chart($("chart"), {
+    type:"line",
+    data:{ labels:xs, datasets:[
+      { data:ys, borderColor:col, backgroundColor:col, borderWidth:2, pointRadius:0, spanGaps:false, tension:0.1 },
+      { data:[], borderColor:col, backgroundColor:"#fff", pointRadius:6, pointBorderWidth:2, showLine:false }
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ title:{display:true,text:"Temperature [°C]"}, ticks:{maxTicksLimit:13} },
+               y:{ title:{display:true,text:LABELS[metric]} } } }
+  });
+  marker();
+}
+function marker(){
+  if(!chart) return;
+  const {f,T} = cur(); const r = analyze(f,T,50000,12);
+  let y = metric==="eff" ? r.eta*100 : metric==="volt" ? r.Vcell : r.gps;
+  chart.data.datasets[1].data = (y>0) ? [{x:T,y:y}] : [];
+  chart.update("none");
+}
+function refresh(){
+  const {f,T,P,V} = cur();
+  $("temp-out").textContent = T+" °C";
+  $("power-out").textContent = (P/1000)+" kW";
+  $("volt-out").textContent = V+" V";
+  const r = analyze(f,T,P,V), bad = !(r.eta>0);
+  $("m-eff").textContent    = bad ? "n/a" : (r.eta*100).toFixed(1)+" %";
+  $("m-erev").textContent   = r.Erev>0 ? r.Erev.toFixed(3)+" V" : "n/a";
+  $("m-vstack").textContent = r.Vstack>0 ? r.Vstack.toFixed(2)+" V" : "n/a";
+  $("m-iload").textContent  = Math.round(r.Iload).toLocaleString()+" A";
+  $("m-stacks").textContent = isFinite(r.nStacks) ? r.nStacks : "n/a";
+  $("m-fuel").textContent   = bad ? "n/a" : r.gps.toFixed(3)+" g/s";
+  $("phase-note").textContent =
+    (f.liq ? `${f.name} is ${r.phase} here (boiling point ${f.bp} °C); product water is ${T<100?"liquid":"vapour"}.`
+           : `${f.name} is a gas across this range; product water is ${T<100?"liquid":"vapour"}.`)
+    + (bad ? "  — efficiency non-physical at this point." : "");
+  marker();
+}
+function init(){
+  ["temp","power","volt"].forEach(id => $(id).addEventListener("input", refresh));
+  $("fuel").addEventListener("change", () => { redraw(); refresh(); });
+  document.querySelectorAll(".metric-btn").forEach(b =>
+    b.addEventListener("click", () => {
+      metric = b.dataset.metric;
+      document.querySelectorAll(".metric-btn").forEach(x => x.classList.toggle("active", x===b));
+      redraw();
+    }));
+  redraw(); refresh();
+}
+if(window.Chart) init(); else window.addEventListener("load", init);
+</script>
+</body>
+</html>
