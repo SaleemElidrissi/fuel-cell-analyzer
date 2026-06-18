@@ -91,14 +91,6 @@
   </div>
 
   <div class="card">
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">
-      Live calculation — your inputs (in <span style="color:var(--accent);font-weight:600;">purple</span>) substituted into the model equations
-    </div>
-    <div id="calc" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-      font-size:12.5px;line-height:1.85;overflow-x:auto;"></div>
-  </div>
-
-  <div class="card">
     <div class="btns">
       <button class="metric-btn active" data-metric="eff">Efficiency</button>
       <button class="metric-btn" data-metric="volt">Cell voltage</button>
@@ -107,6 +99,14 @@
     <div class="chartbox">
       <canvas id="chart" role="img" aria-label="Performance metric versus fuel cell temperature from 15 to 250 degrees Celsius.">Performance metric versus temperature.</canvas>
     </div>
+  </div>
+
+  <div class="card">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+      Live calculation — your inputs (in <span style="color:var(--accent);font-weight:600;">purple</span>) substituted into the model equations
+    </div>
+    <div id="calc" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:12.5px;line-height:1.85;overflow-x:auto;"></div>
   </div>
 
   <footer>
