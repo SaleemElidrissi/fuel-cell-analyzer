@@ -1,167 +1,139 @@
 """
-run_analysis.py
+run_analysis.py  --  ME 417 Project 2 demonstration driver
 ================================================================================
-Demonstration driver for the BS Engineering Fuel Cell Analysis Software.
+Generates, for a 10 kW / 12 V fuel-cell system over 15 C - 250 C:
 
-Produces, for a 50 kW / 12 V system over 10 degC - 250 degC:
+    Graph 1 : efficiency        vs temperature
+    Graph 2 : cell voltage      vs temperature
+    Graph 3 : fuel consumption  vs temperature
 
-    Graph 1 : Efficiency        vs temperature
-    Graph 2 : Cell voltage      vs temperature
-    Graph 3 : Fuel consumption  vs temperature
-
-for BOTH hydrogen and a second fuel (default: methanol) -> six graphs total.
-It also prints a fully worked single-temperature example for each fuel so the
-numbers can be checked by hand.
-
-Run:
-    python run_analysis.py                 # hydrogen + methanol (default)
-    python run_analysis.py Ethanol         # hydrogen + ethanol
-    python run_analysis.py "Natural Gas (CH4)"
+for HYDROGEN and HEXANOL (the team's assigned fuel) -> six graphs total.
+It also (a) writes the raw sweep data to CSV files for graphing, and
+(b) prints fully worked single-temperature examples for hand-checking.
 ================================================================================
 """
 
-import sys
+import csv
 import numpy as np
 import matplotlib.pyplot as plt
 
-from fuel_cell import FuelCellSystem, FUELS, HYDROGEN
+from fuel_cell import FuelCellSystem, FUELS, HYDROGEN, HEXANOL
 
-# --------------------------------------------------------------------------- #
-# Demonstration specification (from the assignment)
-# --------------------------------------------------------------------------- #
-POWER_W = 50_000.0      # 50 kW
-VOLTAGE_V = 12.0        # 12 V
-T_MIN, T_MAX = 10.0, 250.0
-N_POINTS = 241          # 1 degC resolution
+POWER_W = 10_000.0        # 10 kW   (per Project 2 Additional Details)
+VOLTAGE_V = 12.0          # 12 V
+T_MIN, T_MAX = 15.0, 250.0
+STEP = 1.0
 
 
-def sweep(system: FuelCellSystem):
-    """Return temperature array and per-temperature output arrays."""
-    T = np.linspace(T_MIN, T_MAX, N_POINTS)
+def sweep(system):
+    T = np.arange(T_MIN, T_MAX + STEP, STEP)
     eff, vcell, fuel_g_s = [], [], []
     for t in T:
         r = system.analyze(t, POWER_W, VOLTAGE_V)
-        eff.append(r.efficiency * 100.0)        # %
-        vcell.append(r.V_cell)                  # V/cell
-        fuel_g_s.append(r.g_per_s)              # g/s
+        eff.append(r.efficiency * 100.0)
+        vcell.append(r.V_cell)
+        fuel_g_s.append(r.g_per_s)
     return T, np.array(eff), np.array(vcell), np.array(fuel_g_s)
 
 
-def mask_invalid(y):
-    """Blank out non-physical points (efficiency <= 0) so curves read cleanly."""
+def write_csv(fuel, T, eff, vcell, fuel_g_s):
+    fn = f"results_{fuel.formula}.csv"
+    with open(fn, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["T_C", "efficiency_%", "cell_voltage_V", "fuel_g_per_s"])
+        for row in zip(T, eff, vcell, fuel_g_s):
+            w.writerow([f"{row[0]:.1f}",
+                        f"{row[1]:.4f}" if row[1] > 0 else "nan",
+                        f"{row[2]:.5f}" if row[2] > 0 else "nan",
+                        f"{row[3]:.6f}" if row[3] > 0 else "nan"])
+    return fn
+
+
+def mask(y):
     y = np.array(y, dtype=float)
     y[y <= 0] = np.nan
     return y
 
 
-def plot_with_phase_breaks(ax, T, y, boundaries, **kw):
-    """Plot y(T) but break the line at phase boundaries.
-
-    A boiling point produces a genuine discontinuity in the thermodynamic
-    properties (latent heat -> HHV/LHV step), so the curve should show a gap
-    there rather than a vertical connecting segment.
-    """
-    y = mask_invalid(y).copy()
-    edges = [b for b in boundaries if T[0] < b < T[-1]]
-    for b in edges:
-        # blank the single sample just past each boundary to split the line
-        idx = int(np.searchsorted(T, b))
-        if 0 < idx < len(y):
-            y[idx] = np.nan
+def plot_breaks(ax, T, y, boundaries, **kw):
+    y = mask(y).copy()
+    for b in boundaries:
+        if T[0] < b < T[-1]:
+            idx = int(np.searchsorted(T, b))
+            if 0 < idx < len(y):
+                y[idx] = np.nan
     ax.plot(T, y, **kw)
 
 
-def make_plots(second_fuel_name: str):
-    second = FUELS[second_fuel_name]
-    fuels = [HYDROGEN, second]
+COLORS = {"eff": "tab:blue", "volt": "tab:green", "fuel": "tab:red"}
 
-    # one figure, 3 rows (the three required quantities) x 2 cols (the two fuels)
+
+def make_plots():
+    fuels = [HYDROGEN, HEXANOL]
     fig, axes = plt.subplots(3, 2, figsize=(13, 13))
-    fig.suptitle(
-        f"BS Engineering -- Fuel Cell Performance\n"
-        f"50 kW system, 12 V bus, {T_MIN:.0f}-{T_MAX:.0f} degC",
-        fontsize=14, fontweight="bold",
-    )
+    fig.suptitle(f"ME 417 Project 2 -- Fuel Cell Performance\n"
+                 f"10 kW system, 12 V bus, {T_MIN:.0f}-{T_MAX:.0f} degC",
+                 fontsize=14, fontweight="bold")
 
     for col, fuel in enumerate(fuels):
-        sysm = FuelCellSystem(fuel)
-        T, eff, vcell, fuel_g_s = sweep(sysm)
+        T, eff, vcell, fuel_g_s = sweep(FuelCellSystem(fuel))
+        write_csv(fuel, T, eff, vcell, fuel_g_s)
+        breaks = [fuel.boiling_point_C]   # only the FUEL phase change matters
 
-        bp = fuel.boiling_point_C
-        breaks = [bp, 100.0]   # fuel and water boiling points
+        plot_breaks(axes[0][col], T, eff, breaks, color=COLORS["eff"], lw=2)
+        axes[0][col].set(title=f"{fuel.name}: Efficiency vs Temperature",
+                         xlabel="Temperature [degC]", ylabel="Efficiency [%]")
 
-        # --- Graph 1: efficiency ---
-        ax = axes[0][col]
-        plot_with_phase_breaks(ax, T, eff, breaks, color="tab:blue", lw=2)
-        ax.set_title(f"{fuel.name}: Efficiency vs Temperature")
-        ax.set_xlabel("Temperature [degC]")
-        ax.set_ylabel("Efficiency [%]")
-        ax.grid(True, alpha=0.3)
+        plot_breaks(axes[1][col], T, vcell, breaks, color=COLORS["volt"], lw=2)
+        axes[1][col].set(title=f"{fuel.name}: Cell Voltage vs Temperature",
+                         xlabel="Temperature [degC]", ylabel="Operating cell voltage [V]")
 
-        # --- Graph 2: cell voltage ---
-        ax = axes[1][col]
-        plot_with_phase_breaks(ax, T, vcell, breaks, color="tab:green", lw=2)
-        ax.set_title(f"{fuel.name}: Cell Voltage vs Temperature")
-        ax.set_xlabel("Temperature [degC]")
-        ax.set_ylabel("Operating cell voltage [V]")
-        ax.grid(True, alpha=0.3)
+        plot_breaks(axes[2][col], T, fuel_g_s, breaks, color=COLORS["fuel"], lw=2)
+        axes[2][col].set(title=f"{fuel.name}: Fuel Consumption vs Temperature",
+                         xlabel="Temperature [degC]", ylabel="Fuel consumption [g/s]")
 
-        # --- Graph 3: fuel consumption ---
-        ax = axes[2][col]
-        plot_with_phase_breaks(ax, T, fuel_g_s, breaks, color="tab:red", lw=2)
-        ax.set_title(f"{fuel.name}: Fuel Consumption vs Temperature")
-        ax.set_xlabel("Temperature [degC]")
-        ax.set_ylabel("Fuel consumption [g/s]")
-        ax.grid(True, alpha=0.3)
-
-        # mark boiling point / phase boundaries where they fall in range
         for ax in axes[:, col]:
-            for boundary, label in [(bp, f"{fuel.formula} b.p."), (100.0, "H2O b.p.")]:
-                if T_MIN < boundary < T_MAX:
-                    ax.axvline(boundary, color="gray", ls="--", lw=1, alpha=0.7)
-                    ax.text(boundary, ax.get_ylim()[1], f" {label}",
-                            fontsize=7, color="gray", va="top", rotation=90)
+            ax.grid(True, alpha=0.3)
+            bp = fuel.boiling_point_C
+            if T_MIN < bp < T_MAX:
+                ax.axvline(bp, color="gray", ls="--", lw=1, alpha=0.7)
+                ax.text(bp, ax.get_ylim()[1], f" {fuel.formula} b.p.", fontsize=7,
+                        color="gray", va="top", rotation=90)
 
     fig.tight_layout(rect=[0, 0, 1, 0.96])
-    out = f"fuel_cell_graphs_H2_vs_{second.formula}.png"
+    out = "fuel_cell_graphs.png"
     fig.savefig(out, dpi=150)
     print(f"\nSaved six graphs to:  {out}")
-    return out
 
 
-def worked_example(fuel, T_C: float):
-    """Print a fully worked single-point example for hand-checking."""
-    sysm = FuelCellSystem(fuel)
-    r = sysm.analyze(T_C, POWER_W, VOLTAGE_V)
-    dH, dS = fuel.delta_H_S(T_C)
-    dG = fuel.delta_G(T_C)
-    print("\n" + "=" * 56)
-    print(f" WORKED EXAMPLE:  {fuel.name}  at  {T_C:.0f} degC")
-    print("=" * 56)
-    print(f"  Reaction: {fuel.formula} + {fuel.o2} O2 -> "
-          f"{fuel.co2} CO2 + {fuel.h2o} H2O   (n = {fuel.n_electrons} e-)")
-    print(f"  dH = {dH:12.1f} J/mol   ({r.phase}-phase fuel,"
-          f" water {'liquid' if T_C < 100 else 'vapour'})")
-    print(f"  dS = {dS:12.3f} J/mol-K")
-    print(f"  dG = dH - T*dS = {dG:12.1f} J/mol   (T = {T_C+273.15:.2f} K)")
-    print(f"  E_rev = -dG/(nF) = {r.E_rev:.4f} V")
-    print("  " + "-" * 50)
+def worked_example(fuel, T_C):
+    r = FuelCellSystem(fuel).analyze(T_C, POWER_W, VOLTAGE_V)
+    w = fuel.w_elec(T_C)
+    dH = fuel.delta_H(T_C)
+    print("\n" + "=" * 58)
+    print(f" WORKED EXAMPLE:  {fuel.name}  at  {T_C:.0f} degC  ({T_C+273.15:.2f} K)")
+    print("=" * 58)
+    n2 = 3.76 * fuel.o2
+    print(f"  Air reaction: {fuel.formula} + {fuel.o2:g} O2 + {n2:g} N2 -> "
+          f"{fuel.co2:g} CO2 + {fuel.h2o:g} H2O + {n2:g} N2   (n={fuel.n_electrons} e-)")
+    print(f"  w_elec = -dG = {w:12.1f} J/mol")
+    print(f"  dH_rxn       = {dH:12.1f} J/mol")
+    print(f"  E_rev = w_elec/(nF) = {r.E_rev:.4f} V")
+    print("  " + "-" * 52)
     print(r.report())
+    if r.eta_thermo > 1.0:
+        print("  NOTE: thermodynamic efficiency dG/dH exceeds 100% because this"
+              "\n        reaction increases entropy (liquid fuel -> many gas moles),"
+              "\n        so the ideal cell can absorb heat from its surroundings."
+              "\n        Overall efficiency (x voltage x utilisation) stays < 100%."
+              "\n        Efficiency is on a lower-heating-value (vapour water) basis.")
 
 
 def main():
-    second_name = sys.argv[1] if len(sys.argv) > 1 else "Methanol"
-    if second_name not in FUELS:
-        print(f"Unknown fuel '{second_name}'. Choose from: {list(FUELS)}")
-        sys.exit(1)
-
-    # Worked examples: hydrogen at 80 degC (typical PEMFC), second fuel below b.p.
-    worked_example(HYDROGEN, 80.0)
-    second = FUELS[second_name]
-    demo_T = 25.0 if (second.fuel_liquid_key is not None) else 200.0
-    worked_example(second, demo_T)
-
-    make_plots(second_name)
+    worked_example(HYDROGEN, 80.0)     # typical PEMFC point
+    worked_example(HEXANOL, 25.0)      # liquid hexanol, room temperature
+    make_plots()
+    print("\nCSV data written:  results_H2.csv,  results_C6H14O.csv")
 
 
 if __name__ == "__main__":
