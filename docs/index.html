@@ -91,6 +91,14 @@
   </div>
 
   <div class="card">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;">
+      Live calculation — your inputs (in <span style="color:var(--accent);font-weight:600;">purple</span>) substituted into the model equations
+    </div>
+    <div id="calc" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      font-size:12.5px;line-height:1.85;overflow-x:auto;"></div>
+  </div>
+
+  <div class="card">
     <div class="btns">
       <button class="metric-btn active" data-metric="eff">Efficiency</button>
       <button class="metric-btn" data-metric="volt">Cell voltage</button>
@@ -145,16 +153,23 @@ const fuelKey = (f,T_C)=>(f.liq && T_C<f.bp)?f.liq:f.gas;
 function reactants(f,T_C){ const r={O2_g:f.o2,N2_g:N2_PER_O2*f.o2}; r[fuelKey(f,T_C)]=1; return r; }
 function products(f){ const p={H2O_g:f.h2o,N2_g:N2_PER_O2*f.o2}; if(f.co2>0)p.CO2_g=f.co2; return p; }
 
+function Hmix(mix,T){ return Object.entries(mix).reduce((s,[k,v])=>s+v*hSpecies(k,T),0); }
+function Smix(mix,T){
+  const nGas=Object.entries(mix).filter(([k])=>k.endsWith("_g")).reduce((s,[,v])=>s+v,0);
+  return Object.entries(mix).reduce((s,[k,v])=>{
+    let si=s0Species(k,T); if(k.endsWith("_g")) si-=RU*Math.log(v/nGas); return s+v*si;
+  },0);
+}
 function wElec(f,T_C){
-  const T=T_C+T0, re=reactants(f,T_C), pr=products(f);
-  const H=(mix)=>Object.entries(mix).reduce((s,[k,v])=>s+v*hSpecies(k,T),0);
-  const S=(mix)=>{
-    const nGas=Object.entries(mix).filter(([k])=>k.endsWith("_g")).reduce((s,[,v])=>s+v,0);
-    return Object.entries(mix).reduce((s,[k,v])=>{
-      let si=s0Species(k,T); if(k.endsWith("_g")) si-=RU*Math.log(v/nGas); return s+v*si;
-    },0);
-  };
-  return (H(re)-H(pr)) - T*(S(re)-S(pr));
+  const T=T_C+T0;
+  return (Hmix(reactants(f,T_C),T)-Hmix(products(f),T)) - T*(Smix(reactants(f,T_C),T)-Smix(products(f),T));
+}
+function reactionStr(f,T_C){
+  const ph=f.liq?(T_C<f.bp?"(l)":"(g)"):"(g)";
+  const n2=+(N2_PER_O2*f.o2).toFixed(2);
+  const lhs=f.formula+ph+" + "+f.o2+" O₂ + "+n2+" N₂";
+  const rhs=(f.co2>0?f.co2+" CO₂ + ":"")+f.h2o+" H₂O(g) + "+n2+" N₂";
+  return lhs+" → "+rhs;
 }
 function deltaH(f,T_C){
   const T=T_C+T0, re=reactants(f,T_C), pr=products(f);
@@ -211,6 +226,31 @@ function marker(){
   let y=metric==="eff"?r.eta*100:metric==="volt"?r.Vcell:r.gps;
   chart.data.datasets[1].data=(y>0)?[{x:T,y}]:[]; chart.update("none");
 }
+function updateCalc(){
+  const {f,T,P,V}=cur(), TK=T+T0;
+  const re=reactants(f,T), pr=products(f);
+  const Hr=Hmix(re,TK), Hp=Hmix(pr,TK), Sr=Smix(re,TK), Sp=Smix(pr,TK);
+  const w=(Hr-Hp)-TK*(Sr-Sp), dH=deltaH(f,T);
+  const Erev=w/(f.n*F), Vcell=Erev*VOLT_EFF;
+  const etaTh=w/Math.abs(dH), eta=etaTh*VOLT_EFF*UTIL;
+  const ns=Vcell>0?Math.max(1,Math.round(V/Vcell)):0, Icell=JDENS*AREA;
+  const nstk=Vcell>0?Math.ceil(P/(ns*Vcell*Icell)):0, gps=(P/(VOLT_EFF*UTIL*w))*f.M;
+  const J=x=>Math.round(x).toLocaleString();
+  const A=x=>`<span style="color:var(--accent);font-weight:600">${x}</span>`;
+  const etaNote = etaTh>1
+    ? ` <span style="color:var(--muted)">(&gt;100%: entropy-increasing reaction draws ambient heat; overall stays &lt;100%)</span>` : "";
+  $("calc").innerHTML = `
+    <div style="margin-bottom:10px;color:var(--coral);font-weight:600">${reactionStr(f,T)}</div>
+    <div><b>1.</b> w<sub>elec</sub> = (H<sub>react</sub> − H<sub>prod</sub>) − T·(S<sub>react</sub> − S<sub>prod</sub>) = −ΔG</div>
+    <div style="padding-left:16px;color:var(--muted)">H<sub>react</sub>=${J(Hr)}, H<sub>prod</sub>=${J(Hp)} J/mol &nbsp;·&nbsp; S<sub>react</sub>=${Sr.toFixed(1)}, S<sub>prod</sub>=${Sp.toFixed(1)} J/mol·K &nbsp;·&nbsp; T=${A(TK.toFixed(2))} K</div>
+    <div style="padding-left:16px">= (${J(Hr)} − ${J(Hp)}) − ${A(TK.toFixed(2))}·(${Sr.toFixed(1)} − ${Sp.toFixed(1)}) = <b>${J(w)} J/mol</b></div>
+    <div style="margin-top:6px"><b>2.</b> E<sub>rev</sub> = w<sub>elec</sub>/(n·F) = ${J(w)}/(${f.n}·96485) = <b>${Erev.toFixed(4)} V</b></div>
+    <div><b>3.</b> V<sub>cell</sub> = 0.70·E<sub>rev</sub> = <b>${Vcell.toFixed(4)} V</b></div>
+    <div><b>4.</b> η = (w<sub>elec</sub>/|ΔH|)·0.70·0.95 = ${(etaTh*100).toFixed(1)}%·0.665 = <b>${(eta*100).toFixed(1)}%</b> <span style="color:var(--muted)">(ΔH=${J(dH)} J/mol)</span>${etaNote}</div>
+    <div><b>5.</b> N<sub>series</sub> = round(${A(V)}/${Vcell.toFixed(3)}) = <b>${ns}</b> &nbsp;·&nbsp; N<sub>stacks</sub> = ⌈${A(J(P))}/(${ns}·${Vcell.toFixed(3)}·${Icell})⌉ = <b>${nstk}</b></div>
+    <div><b>6.</b> İ<sub>load</sub> = P/V = ${A(J(P))}/${A(V)} = <b>${Math.round(P/V).toLocaleString()} A</b> &nbsp;·&nbsp; fuel = P/(0.665·w<sub>elec</sub>)·M = <b>${gps.toFixed(4)} g/s</b></div>`;
+}
+
 function refresh(){
   const {f,T,P,V}=cur();
   $("temp-out").textContent=T+" °C"; $("power-out").textContent=(P/1000)+" kW"; $("volt-out").textContent=V+" V";
@@ -225,6 +265,7 @@ function refresh(){
     (f.liq?`${f.name} is ${r.phase} here (boiling point ${f.bp} °C); product water is treated as vapour.`
           :`${f.name} is a gas across this range; product water is treated as vapour.`)
     + (r.etaTh>1?`  (thermodynamic η=${(r.etaTh*100).toFixed(0)}% > 100% — entropy-increasing reaction draws ambient heat; overall η stays < 100%.)`:"");
+  updateCalc();
   marker();
 }
 function init(){
