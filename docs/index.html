@@ -110,12 +110,17 @@
   </div>
 
   <footer>
-    Method (per Project 2 Additional Details): E<sub>rev</sub> = w<sub>elec</sub>/(nF),
-    w<sub>elec</sub> = (Σνh̄)<sub>react</sub> − (Σνh̄)<sub>prod</sub> − T[(Σνs̄)<sub>react</sub> − (Σνs̄)<sub>prod</sub>] = −ΔG.
-    Each species' h̄(T) and s̄°(T) are built from a 298.15 K reference by integrating the ideal-gas
-    heat-capacity polynomial C<sub>p</sub> = A+BT+CT²+DT³; air reaction carries N₂; product water is vapour.
-    Fuel phase switches at its boiling point (hexanol 157.1 °C). Efficiency is on a lower-heating-value basis.
-    Same model as the Python source (<code>fuel_cell.py</code>).
+    <div style="font-weight:500;color:var(--text);margin-bottom:8px;">Method (per Project 2 Additional Details)</div>
+    <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.9;margin-bottom:10px;">
+      <div>E<sub>rev</sub> = w<sub>elec</sub> / (n·F)</div>
+      <div>w<sub>elec</sub> = (Σνh̄)<sub>react</sub> − (Σνh̄)<sub>prod</sub> − T·[(Σνs̄)<sub>react</sub> − (Σνs̄)<sub>prod</sub>] = −ΔG</div>
+    </div>
+    <ul style="margin:0;padding-left:18px;">
+      <li>h̄(T) and s̄°(T) integrated from a 298.15 K reference using C<sub>p</sub> = A + BT + CT² + DT³</li>
+      <li>Air reaction carries N₂; product water treated as vapour</li>
+      <li>Fuel phase switches at its boiling point (hexanol 157.1 °C)</li>
+      <li>Efficiency on a lower-heating-value basis</li>
+    </ul>
   </footer>
 </div>
 
